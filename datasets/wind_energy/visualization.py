@@ -10,14 +10,14 @@ def energy_over_time():
 
     plt.figure(figsize=(14, 5))
 
-    # plt.bar(df_spring['date'], df_spring['capacity (kW)'], color='green', width=1)
-    plt.bar(df['date'], df['capacity (kW)'], color='green', width=1)
+    # plt.bar(df_spring['date'], df_spring['Energy created (kW)'], color='green', width=1)
+    plt.bar(df['date'], df['Energy created (kW)'], color='green', width=1)
 
 
     plt.xticks(rotation=45, ha='right')
     plt.xlabel('Date')
     plt.gca().yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x/1e6:.0f}M'))
-    plt.ylabel('Capacity (MW)')
+    plt.ylabel('Energy created (MW)')
     plt.title('Daily Wind Energy 2018')
     # plt.title('Daily Wind Energy in March 2018')
     plt.tight_layout()
@@ -38,11 +38,11 @@ def line_chart_per_5years():
     df = df.sort_values('date')
 
     plt.figure(figsize=(16, 5))
-    plt.plot(df['date'], df['capacity (kW)'], color='purple', linewidth=0.8)
+    plt.plot(df['date'], df['Energy created (kW)'], color='purple', linewidth=0.8)
 
     plt.xticks(rotation=45, ha='right')
     plt.xlabel('Date')
-    plt.ylabel('Capacity (kW)')
+    plt.ylabel('Energy created (kW)')
     plt.title('Daily Wind Energy 2017 - 2021')
     plt.gca().yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x / 1e6:.0f}M'))
     plt.tight_layout()

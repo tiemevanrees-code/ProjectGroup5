@@ -24,7 +24,7 @@ for input_path, output_path in files:
     df_daily = df_daily.iloc[1:]
 
     # Keep only the columns we want
-    df_daily = df_daily[['date', 'capacity (kW)']]
+    df_daily = df_daily[['date', 'Energy created (kW)']]
 
     df_daily.to_csv(output_path, index=False)
     print(f"Saved: {output_path} ({len(df_daily)} rows)")
