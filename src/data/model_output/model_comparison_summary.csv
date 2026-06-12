@@ -1,0 +1,6 @@
+model_name,evaluation_period,training_period,mae_kwh,rmse_kwh,r2,selected_model
+baseline_linear_regression,2021_validation,2017-2020,8909062.29,11932533.35,0.7244,False
+multivariable_linear_regression,2021_validation,2017-2020,6307370.11,8853440.16,0.8483,True
+random_forest_regression,2021_validation,2017-2020,7072979.13,9537212.97,0.8239,False
+multivariable_linear_regression,2022_external,2017-2021,13525311.55,19763741.68,0.5651,True
+random_forest_regression,2022_external,2017-2021,15683179.49,19963688.09,0.5563,False

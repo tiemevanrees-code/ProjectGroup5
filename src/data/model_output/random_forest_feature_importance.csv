@@ -1,0 +1,6 @@
+feature,importance
+avg_wind_speed_cubed,0.4869700895160532
+avg_wind_speed_all_stations,0.4456163162462797
+installed_wind_capacity_mw,0.052624911311339145
+wind_direction_sin,0.008787440533902739
+wind_direction_cos,0.006001242392425138
