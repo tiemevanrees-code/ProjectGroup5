@@ -1,10 +1,15 @@
 from datetime import date
 
 import pandas as pd
+import plotly.graph_objects as go
 import requests
 import streamlit as st
 
 API_BASE_URL = "http://127.0.0.1:8000"
+
+MODEL_DISPLAY_NAME = "Multivariable Linear Regression"
+MODEL_VERSION = "v1_capacity_adjusted"
+
 
 st.set_page_config(
     page_title="Dutch Wind Energy Dashboard",
@@ -12,219 +17,174 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("Dutch Wind Energy Prediction Dashboard")
 
-st.write(
-    "This dashboard shows predicted and actual Dutch wind-energy "
-    "generation for 2022 using the selected multivariable linear-regression model."
-)
-
-
-@st.cache_data(ttl=60)
-def get_summary(
-    start_date: str | None = None,
-    end_date: str | None = None,
-) -> dict:
-    """
-    Retrieve aggregated model-performance statistics from the API.
-    """
-    params = {}
-
-    if start_date is not None:
-        params["start_date"] = start_date
-
-    if end_date is not None:
-        params["end_date"] = end_date
-
+def get_summary(start_date: str, end_date: str) -> dict:
     response = requests.get(
         f"{API_BASE_URL}/summary",
-        params=params,
+        params={
+            "start_date": start_date,
+            "end_date": end_date,
+        },
         timeout=10,
     )
-
     response.raise_for_status()
-
     return response.json()
 
 
-@st.cache_data(ttl=60)
-def get_predictions(
-    start_date: str,
-    end_date: str,
-) -> list[dict]:
-    """
-    Retrieve daily prediction records from the API.
-    """
-    params = {
-        "start_date": start_date,
-        "end_date": end_date,
-        "limit": 365,
-    }
-
+def get_predictions(start_date: str, end_date: str) -> list[dict]:
     response = requests.get(
         f"{API_BASE_URL}/predictions",
-        params=params,
+        params={
+            "start_date": start_date,
+            "end_date": end_date,
+            "limit": 365,
+        },
         timeout=10,
     )
-
     response.raise_for_status()
-
     return response.json()
 
 
-@st.cache_data(ttl=60)
-def get_prediction_by_date(
-    selected_date: str,
-) -> dict:
-    """
-    Retrieve one daily prediction record from the API.
-    """
-    response = requests.get(
-        f"{API_BASE_URL}/predictions/{selected_date}",
-        timeout=10,
-    )
-
-    response.raise_for_status()
-
-    return response.json()
-
-
-def convert_records_to_dataframe(
-    records: list[dict],
-) -> pd.DataFrame:
-    """
-    Convert nested API records into a flat dataframe for visualization.
-    """
+def records_to_dataframe(records: list[dict]) -> pd.DataFrame:
     rows = []
 
     for record in records:
         rows.append(
             {
                 "date": record["date"],
-                "avg_wind_speed_ms": record[
-                    "weather"
-                ][
-                    "avg_wind_speed_all_stations"
-                ],
-                "avg_wind_speed_cubed": record[
-                    "weather"
-                ][
-                    "avg_wind_speed_cubed"
-                ],
-                "wind_direction_sin": record[
-                    "weather"
-                ][
-                    "wind_direction_sin"
-                ],
-                "wind_direction_cos": record[
-                    "weather"
-                ][
-                    "wind_direction_cos"
-                ],
-                "installed_capacity_mw": record[
-                    "installed_wind_capacity_mw"
-                ],
-                "predicted_generation_kwh": record[
-                    "prediction"
-                ][
-                    "predicted_wind_generation_kwh"
-                ],
-                "actual_generation_kwh": record[
-                    "prediction"
-                ][
-                    "actual_wind_generation_kwh"
-                ],
-                "error_kwh": record[
-                    "prediction"
-                ][
-                    "error_kwh"
-                ],
-                "absolute_error_kwh": record[
-                    "prediction"
-                ][
-                    "absolute_error_kwh"
-                ],
-                "percentage_error": record[
-                    "prediction"
-                ][
-                    "percentage_error"
-                ],
+                "avg_wind_speed_ms": record["weather"]["avg_wind_speed_all_stations"],
+                "avg_wind_speed_cubed": record["weather"]["avg_wind_speed_cubed"],
+                "installed_capacity_mw": record["installed_wind_capacity_mw"],
+                "actual_kwh": record["prediction"]["actual_wind_generation_kwh"],
+                "predicted_kwh": record["prediction"]["predicted_wind_generation_kwh"],
+                "error_kwh": record["prediction"]["error_kwh"],
+                "absolute_error_kwh": record["prediction"]["absolute_error_kwh"],
+                "percentage_error": record["prediction"]["percentage_error"],
             }
         )
 
-    df = pd.DataFrame(
-        rows
-    )
-
-    df["date"] = pd.to_datetime(
-        df["date"]
-    )
+    df = pd.DataFrame(rows)
+    df["date"] = pd.to_datetime(df["date"])
+    df["month"] = df["date"].dt.month
 
     return df
 
 
-def format_million_kwh(
-    value: float,
-) -> str:
-    """
-    Format a kWh value as millions of kWh.
-    """
-    return (
-        f"{value / 1_000_000:,.2f} million kWh"
+def format_million_kwh(value: float) -> str:
+    return f"{value / 1_000_000:,.2f}M kWh"
+
+
+def create_actual_vs_prediction_graph(df: pd.DataFrame) -> go.Figure:
+    figure = go.Figure()
+
+    figure.add_trace(
+        go.Scatter(
+            x=df["date"],
+            y=df["actual_kwh"],
+            mode="lines",
+            name="Actual 2022 generation",
+            line=dict(width=2),
+        )
     )
 
+    figure.add_trace(
+        go.Scatter(
+            x=df["date"],
+            y=df["predicted_kwh"],
+            mode="lines",
+            name="Predicted generation",
+            line=dict(width=2, dash="dash"),
+        )
+    )
 
-st.sidebar.header(
-    "Filters"
+    figure.update_layout(
+        title="Actual 2022 wind generation vs model prediction",
+        xaxis_title="Date",
+        yaxis_title="Wind energy generation (kWh)",
+        hovermode="x unified",
+        height=450,
+    )
+
+    return figure
+
+
+def create_3d_graph(df: pd.DataFrame) -> go.Figure:
+    figure = go.Figure()
+
+    figure.add_trace(
+        go.Scatter3d(
+            x=df["avg_wind_speed_ms"],
+            y=df["month"],
+            z=df["actual_kwh"],
+            mode="markers",
+            marker=dict(
+                size=5,
+                color=df["percentage_error"],
+                colorscale="Viridis",
+                showscale=True,
+                colorbar=dict(title="Error (%)"),
+            ),
+            text=df["date"].dt.strftime("%Y-%m-%d"),
+            hovertemplate=(
+                "Date: %{text}<br>"
+                "Wind speed: %{x:.2f} m/s<br>"
+                "Month: %{y}<br>"
+                "Actual generation: %{z:,.0f} kWh<br>"
+                "Error: %{marker.color:.2f}%"
+                "<extra></extra>"
+            ),
+        )
+    )
+
+    figure.update_layout(
+        title="3D exploration: wind speed, month and actual generation",
+        scene=dict(
+            xaxis_title="Average wind speed (m/s)",
+            yaxis_title="Month",
+            zaxis_title="Actual generation (kWh)",
+        ),
+        height=600,
+    )
+
+    return figure
+
+
+st.title("🌬️ Dutch Wind Energy Prediction Dashboard")
+
+st.write(
+    "This dashboard shows the selected **multivariable linear regression** model. "
+    "It compares actual Dutch wind generation in 2022 with the model prediction "
+    "and lets users explore the relationship between weather, season, and energy generation."
 )
+
+st.info(
+    f"Selected model: **{MODEL_DISPLAY_NAME}**  |  Model version: **{MODEL_VERSION}**"
+)
+
+
+st.sidebar.header("Date filter")
 
 start_date = st.sidebar.date_input(
     "Start date",
-    value=date(
-        2022,
-        1,
-        1,
-    ),
-    min_value=date(
-        2022,
-        1,
-        1,
-    ),
-    max_value=date(
-        2022,
-        12,
-        31,
-    ),
+    value=date(2022, 1, 1),
+    min_value=date(2022, 1, 1),
+    max_value=date(2022, 12, 31),
 )
 
 end_date = st.sidebar.date_input(
     "End date",
-    value=date(
-        2022,
-        12,
-        31,
-    ),
-    min_value=date(
-        2022,
-        1,
-        1,
-    ),
-    max_value=date(
-        2022,
-        12,
-        31,
-    ),
+    value=date(2022, 12, 31),
+    min_value=date(2022, 1, 1),
+    max_value=date(2022, 12, 31),
 )
 
 if start_date > end_date:
-    st.error(
-        "The start date cannot be later than the end date."
-    )
-
+    st.error("Start date cannot be later than end date.")
     st.stop()
 
 start_date_string = start_date.isoformat()
 end_date_string = end_date.isoformat()
+
 
 try:
     summary = get_summary(
@@ -232,351 +192,116 @@ try:
         end_date=end_date_string,
     )
 
-    prediction_records = get_predictions(
+    records = get_predictions(
         start_date=start_date_string,
         end_date=end_date_string,
     )
 
 except requests.RequestException as error:
     st.error(
-        "The dashboard could not connect to the FastAPI backend. "
-        "Start the API with: uvicorn api.main:app --reload"
+        "Could not connect to the FastAPI backend. "
+        "Start it first with: uvicorn api.main:app --reload"
     )
-
-    st.exception(
-        error
-    )
-
+    st.exception(error)
     st.stop()
 
-df = convert_records_to_dataframe(
-    prediction_records
+
+df = records_to_dataframe(records)
+
+
+st.subheader("Model performance summary")
+
+metric_1, metric_2, metric_3, metric_4 = st.columns(4)
+
+metric_1.metric(
+    "Model",
+    "Multivariable LR",
 )
 
-st.header(
-    "Model overview"
-)
-
-column_1, column_2, column_3, column_4 = (
-    st.columns(
-        4
-    )
-)
-
-column_1.metric(
-    "Selected model",
-    "Linear regression",
-)
-
-column_2.metric(
+metric_2.metric(
     "R² score",
     f"{summary['r2']:.3f}",
 )
 
-column_3.metric(
-    "MAE",
-    format_million_kwh(
-        summary[
-            "mae_kwh"
-        ]
-    ),
+metric_3.metric(
+    "Mean absolute error",
+    format_million_kwh(summary["mae_kwh"]),
 )
 
-column_4.metric(
-    "RMSE",
-    format_million_kwh(
-        summary[
-            "rmse_kwh"
-        ]
-    ),
-)
-
-column_5, column_6, column_7, column_8 = (
-    st.columns(
-        4
-    )
-)
-
-column_5.metric(
-    "Average actual generation",
-    format_million_kwh(
-        summary[
-            "average_actual_generation_kwh"
-        ]
-    ),
-)
-
-column_6.metric(
-    "Average predicted generation",
-    format_million_kwh(
-        summary[
-            "average_predicted_generation_kwh"
-        ]
-    ),
-)
-
-column_7.metric(
-    "Average prediction bias",
-    format_million_kwh(
-        summary[
-            "average_prediction_bias_kwh"
-        ]
-    ),
-)
-
-column_8.metric(
-    "Correlation",
-    f"{summary['correlation']:.3f}",
+metric_4.metric(
+    "Average bias",
+    format_million_kwh(summary["average_prediction_bias_kwh"]),
 )
 
 st.caption(
-    "A negative prediction bias means that the model tends "
-    "to underestimate actual wind-energy generation."
+    "A negative prediction bias means that the model usually predicts less generation "
+    "than was actually produced."
 )
 
-st.header(
-    "Actual versus predicted wind-energy generation"
+
+st.subheader("Actual 2022 generation and model prediction")
+
+st.plotly_chart(
+    create_actual_vs_prediction_graph(df),
+    use_container_width=True,
 )
 
-line_chart_df = (
-    df[
-        [
-            "date",
-            "actual_generation_kwh",
-            "predicted_generation_kwh",
-        ]
-    ]
-    .set_index(
-        "date"
-    )
-    .rename(
-        columns={
-            "actual_generation_kwh":
-                "Actual generation",
-            "predicted_generation_kwh":
-                "Predicted generation",
-        }
-    )
-)
 
-st.line_chart(
-    line_chart_df
-)
-
-st.header(
-    "Prediction error over time"
-)
-
-error_chart_df = (
-    df[
-        [
-            "date",
-            "error_kwh",
-        ]
-    ]
-    .set_index(
-        "date"
-    )
-    .rename(
-        columns={
-            "error_kwh":
-                "Prediction error",
-        }
-    )
-)
-
-st.line_chart(
-    error_chart_df
-)
-
-st.caption(
-    "Negative values mean that the model underestimated "
-    "the actual wind-energy generation."
-)
-
-st.header(
-    "Relationship between wind speed and generation"
-)
-
-scatter_df = (
-    df[
-        [
-            "avg_wind_speed_ms",
-            "actual_generation_kwh",
-        ]
-    ]
-    .rename(
-        columns={
-            "avg_wind_speed_ms":
-                "Average wind speed (m/s)",
-            "actual_generation_kwh":
-                "Actual generation (kWh)",
-        }
-    )
-)
-
-st.scatter_chart(
-    scatter_df,
-    x="Average wind speed (m/s)",
-    y="Actual generation (kWh)",
-)
-
-st.header(
-    "Investigate one day"
-)
-
-selected_date = st.date_input(
-    "Select a date",
-    value=date(
-        2022,
-        1,
-        1,
-    ),
-    min_value=date(
-        2022,
-        1,
-        1,
-    ),
-    max_value=date(
-        2022,
-        12,
-        31,
-    ),
-)
-
-try:
-    selected_day = get_prediction_by_date(
-        selected_date.isoformat()
-    )
-
-except requests.RequestException as error:
-    st.error(
-        "The selected daily result could not be retrieved."
-    )
-
-    st.exception(
-        error
-    )
-
-    st.stop()
-
-daily_column_1, daily_column_2, daily_column_3 = (
-    st.columns(
-        3
-    )
-)
-
-daily_column_1.metric(
-    "Average wind speed",
-    (
-        f"{selected_day['weather']['avg_wind_speed_all_stations']:.2f} m/s"
-    ),
-)
-
-daily_column_2.metric(
-    "Installed wind capacity",
-    (
-        f"{selected_day['installed_wind_capacity_mw']:,} MW"
-    ),
-)
-
-daily_column_3.metric(
-    "Percentage error",
-    (
-        f"{selected_day['prediction']['percentage_error']:.2f}%"
-    ),
-)
-
-daily_column_4, daily_column_5, daily_column_6 = (
-    st.columns(
-        3
-    )
-)
-
-daily_column_4.metric(
-    "Predicted generation",
-    format_million_kwh(
-        selected_day[
-            "prediction"
-        ][
-            "predicted_wind_generation_kwh"
-        ]
-    ),
-)
-
-daily_column_5.metric(
-    "Actual generation",
-    format_million_kwh(
-        selected_day[
-            "prediction"
-        ][
-            "actual_wind_generation_kwh"
-        ]
-    ),
-)
-
-daily_column_6.metric(
-    "Prediction error",
-    format_million_kwh(
-        selected_day[
-            "prediction"
-        ][
-            "error_kwh"
-        ]
-    ),
-)
-
-st.header(
-    "Largest error in selected period"
-)
+st.subheader("Interactive 3D data exploration")
 
 st.write(
-    (
-        f"The largest absolute prediction error occurred on "
-        f"**{summary['largest_absolute_error']['date']}** "
-        f"and was "
-        f"**{format_million_kwh(summary['largest_absolute_error']['absolute_error_kwh'])}**."
-    )
+    "This 3D plot shows how wind speed and month relate to actual wind-energy generation. "
+    "The colour of each point shows the model's percentage error for that day."
 )
 
-st.header(
-    "Daily results table"
+st.plotly_chart(
+    create_3d_graph(df),
+    use_container_width=True,
 )
 
-table_df = (
-    df[
+
+st.subheader("Short interpretation")
+
+st.write(
+    """
+The line graph shows that the multivariable linear regression model follows the general
+movement of wind-energy generation, but it still underestimates many days.
+
+The 3D graph helps users explore the relationship between wind speed, season, and actual
+generation. Days with higher wind speeds generally produce more wind energy, but the
+prediction error shows that weather alone does not explain everything. Installed capacity,
+regional differences, turbine availability, curtailment, and the difference between KNMI
+observations and Open-Meteo forecast inputs can also affect the results.
+"""
+)
+
+
+with st.expander("Show daily data table"):
+    table_df = df[
         [
             "date",
             "avg_wind_speed_ms",
             "installed_capacity_mw",
-            "predicted_generation_kwh",
-            "actual_generation_kwh",
+            "actual_kwh",
+            "predicted_kwh",
             "error_kwh",
             "percentage_error",
         ]
-    ]
-    .copy()
-)
+    ].copy()
 
-st.dataframe(
-    table_df,
-    use_container_width=True,
-)
+    table_df = table_df.rename(
+        columns={
+            "date": "Date",
+            "avg_wind_speed_ms": "Average wind speed (m/s)",
+            "installed_capacity_mw": "Installed capacity (MW)",
+            "actual_kwh": "Actual generation (kWh)",
+            "predicted_kwh": "Predicted generation (kWh)",
+            "error_kwh": "Prediction error (kWh)",
+            "percentage_error": "Percentage error (%)",
+        }
+    )
 
-st.header(
-    "Interpretation and limitations"
-)
-
-st.write(
-    """
-The model uses average wind speed, wind speed cubed, transformed wind-direction
-features, and installed wind capacity to estimate daily Dutch wind-energy generation.
-
-The dashboard should be interpreted as an analytical prototype rather than a
-production forecasting system. The model still underestimates generation on many
-days. One likely reason is that annual installed-capacity values are assigned to every
-day within the same year, even though new wind farms may have become operational
-gradually. The historical KNMI observations and archived Open-Meteo forecast inputs
-may also differ in measurement method and spatial coverage.
-"""
-)
+    st.dataframe(
+        table_df,
+        use_container_width=True,
+    )
